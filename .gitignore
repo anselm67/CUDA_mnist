@@ -1,0 +1,30 @@
+# Git ignore file for CUDA projects
+
+# Executables
+*.exe
+*.out
+
+# Object files
+*.o
+*.obj
+
+# Libraries
+*.lib
+*.so
+*.dylib
+*.a
+
+# CMake build directory
+build/
+CMakeCache.txt
+CMakeFiles/
+
+# VS Code settings
+.vscode/
+
+# Temporary files
+*~
+\#*\#
+
+# Other
+results.csv
