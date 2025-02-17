@@ -5,7 +5,7 @@ cmake_policy(SET CMP0146 NEW)
 find_package(CUDAToolkit REQUIRED)
 
 add_executable(primer primer.cu)
-
+add_executable(mult mult.cu)
 
 # Set CUDA standard
 set_property(TARGET primer PROPERTY CUDA_STANDARD 17)
@@ -23,6 +23,10 @@ if(CMAKE_BUILD_TYPE MATCHES "Debug")
         ${CUDA_COMMON_FLAGS}
         -g # Enable debug information
     )
+    target_compile_options(mult PRIVATE
+        ${CUDA_COMMON_FLAGS}
+        -g # Enable debug information
+    )
 endif()
 
 # Release configuration
@@ -32,7 +36,12 @@ if(CMAKE_BUILD_TYPE MATCHES "Release")
         ${CUDA_COMMON_FLAGS}
         -O3 # Enable optimization
     )
+    target_compile_options(mult PRIVATE
+        ${CUDA_COMMON_FLAGS}
+        -O3 # Enable optimization
+    )
 endif()
 
 target_link_libraries(primer ${CUDA_LIBRARIES})
+target_link_libraries(mult ${CUDA_LIBRARIES})
 

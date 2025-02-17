@@ -33,7 +33,7 @@ int max_threads() {
     return  deviceProp.maxThreadsPerBlock;
 }
 
-std::pair<float, float> measure(int n) {
+std::pair<float, float> measure_add (int n) {
     const int SIZE = n * sizeof(float);
 
     float *h_A, *h_B, *h_C;
@@ -93,7 +93,7 @@ int main() {
 
     for (int power = 3; power <= 26; power++) {
         int n = pow(2, power);
-        std::pair<float, float> results = measure(n);
+        std::pair<float, float> results = measure_add(n);
         float cpu_time = results.first;
         float gpu_time = results.second;
         outfile << n << "," << cpu_time << "," << gpu_time << std::endl;
