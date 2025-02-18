@@ -6,42 +6,36 @@ find_package(CUDAToolkit REQUIRED)
 
 add_executable(primer primer.cu)
 add_executable(mult mult.cu)
-
-# Set CUDA standard
-set_property(TARGET primer PROPERTY CUDA_STANDARD 17)
-set_property(TARGET primer PROPERTY CUDA_STANDARD_REQUIRED TRUE)
+add_executable(mnist mnist.cu)
 
 # Common compile flags
 set(CUDA_COMMON_FLAGS
     -arch=sm_89 # Replace with your target architecture
 )
 
-# Debug configuration
-if(CMAKE_BUILD_TYPE MATCHES "Debug")
-    message(STATUS "Building in Debug mode")
-    target_compile_options(primer PRIVATE
-        ${CUDA_COMMON_FLAGS}
-        -g # Enable debug information
-    )
-    target_compile_options(mult PRIVATE
-        ${CUDA_COMMON_FLAGS}
-        -g # Enable debug information
-    )
-endif()
+# Function to set common properties and compile options
+function(setup_target target)
+    set_property(TARGET ${target} PROPERTY CUDA_STANDARD 17)
+    set_property(TARGET ${target} PROPERTY CUDA_STANDARD_REQUIRED TRUE)
+    target_link_libraries(${target} ${CUDA_LIBRARIES})
 
-# Release configuration
-if(CMAKE_BUILD_TYPE MATCHES "Release")
-    message(STATUS "Building in Release mode")
-    target_compile_options(primer PRIVATE
-        ${CUDA_COMMON_FLAGS}
-        -O3 # Enable optimization
-    )
-    target_compile_options(mult PRIVATE
-        ${CUDA_COMMON_FLAGS}
-        -O3 # Enable optimization
-    )
-endif()
+    if(CMAKE_BUILD_TYPE MATCHES "Debug")
+        message(STATUS "Building ${target} in Debug mode")
+        target_compile_options(${target} PRIVATE
+            ${CUDA_COMMON_FLAGS}
+            -g # Enable debug information
+        )
+    elseif(CMAKE_BUILD_TYPE MATCHES "Release")
+        message(STATUS "Building ${target} in Release mode")
+        target_compile_options(${target} PRIVATE
+            ${CUDA_COMMON_FLAGS}
+            -O3 # Enable optimization
+        )
+    endif()
+endfunction()
 
-target_link_libraries(primer ${CUDA_LIBRARIES})
-target_link_libraries(mult ${CUDA_LIBRARIES})
+# Apply the function to each target
+setup_target(primer)
+setup_target(mult)
+setup_target(mnist)
 
