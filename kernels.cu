@@ -96,8 +96,8 @@ void test_linear() {
     float *d_biases = cudaCopy(biases, 2 * sizeof(float));
     float *d_output = cudaCopy(output, 4 * 2 * sizeof(float));
 
-    auto [dimGrid, dimBlock] = get_grid2d(3, 4, 16);
-    linear<<<dimGrid, dimBlock>>>(batch_size, 3, 2, d_input, d_weights, d_biases, d_output);
+    auto [blocks, threads] = get_grid2d(3, 4, 16);
+    linear<<<blocks, threads>>>(batch_size, 3, 2, d_input, d_weights, d_biases, d_output);
 
     cudaMemcpy(output, d_output, 4 * 2 * sizeof(float), cudaMemcpyDeviceToHost);
     
@@ -139,8 +139,8 @@ void test_relu() {
     float *d_input = cudaCopy(input, 8);
     float *d_output = cudaCopy(output, 8);
 
-    auto [dimGrid, dimBlock] = get_grid2d(3, 4, 16);
-    relu<<<dimGrid, dimBlock>>>(width, height, d_input, d_output);
+    auto [blocks, threads] = get_grid2d(3, 4, 16);
+    relu<<<blocks, threads>>>(width, height, d_input, d_output);
 
     cudaMemcpy(output, d_output, 8 * sizeof(float), cudaMemcpyDeviceToHost);
     check_equals(__func__, output, 8, { 1, 0, 2, 0, 3, 0, 4, 0 });
@@ -176,8 +176,8 @@ void test_softmax() {
     float *d_input = cudaCopy(input, 8);
     float *d_output = cudaCopy(output, 8);
 
-    auto [dimGrid, dimBlock] = get_grid2d(2, 4, 16);
-    softmax<<<dimGrid, dimBlock>>>(width, height, d_input, d_output);
+    auto [blocks, threads] = get_grid2d(2, 4, 16);
+    softmax<<<blocks, threads>>>(width, height, d_input, d_output);
 
     cudaMemcpy(output, d_output, 8 * sizeof(float), cudaMemcpyDeviceToHost);
     check_equals(__func__, output, 8, { 0.2689, 0.7311, 0.2689, 0.7311, 0.2689, 0.7311, 0.2689, 0.7311 });
@@ -249,11 +249,11 @@ __global__ void init_rand(int width, int height, float *mat) {
 }
 
 void init_linear(float *w, float *b, int width, int height, int blockSize) {
-    auto [dimGrid, dimBlock] = get_grid2d(width, height, blockSize);
-    init_rand<<<dimGrid, dimBlock>>>(width, height, w);
+    auto [blocks, threads] = get_grid2d(width, height, blockSize);
+    init_rand<<<blocks, threads>>>(width, height, w);
 
-    std::tie(dimGrid, dimBlock) = get_grid1d(height, blockSize);
-    init_rand<<<dimGrid, dimBlock>>>(1, height, b);
+    std::tie(blocks, threads) = get_grid1d(height, blockSize);
+    init_rand<<<blocks, threads>>>(1, height, b);
 }
 
 

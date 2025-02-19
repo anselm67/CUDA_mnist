@@ -12,7 +12,8 @@ class NN {
         void forward(float *h_input, float *h_y, bool do_loss=false);
         void backward();
         void update();
-        void train(int length, float *h_input, float *h_y, int epochs);
+        void train(int epochs, const MNIST &train_dataset, const MNIST &valid_dataset);
+        float valid(const MNIST& dataset);
 
     private:
         void init_linear(float *w, float *b, int width, int height, int blockSize);

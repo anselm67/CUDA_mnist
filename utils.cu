@@ -23,7 +23,7 @@ void print_matrix(int width, int height, float* matrix, std::string title, bool 
         std::cout<<title<<std::endl;
         for(int i = 0; i < height; i++) {
             for(int j = 0; j < width; j++) {
-                std::cout <<std::fixed << std::setprecision(3) << matrix[i*width+j] << ", ";
+                std::cout << std::fixed << std::setprecision(3) << matrix[i*width+j] << ", ";
                 if (std::isnan(matrix[i*width+j]) ) {
                     std::cerr << "NaN value at " << i << ", " << j << std::endl;
                 }

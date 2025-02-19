@@ -26,28 +26,32 @@ int parse_csv_line(const std::string& line, std::vector<int> &result) {
     return result.size();
 }
 
-void read_mnist(std::ifstream& fin, int start, int length, float* x, float* y) {
+bool read_mnist(const std::string& filename, MNIST& mnist) {
+    std::ifstream fin(filename);
+    if (!fin.is_open()) {
+        throw std::runtime_error(filename + " not found.");
+    }
+
     std::string line;
     std::vector<char> buffer(4096);
     std::vector<int> fields(1024);
-
-    for (int i = start; i < start + length; ++i)
-    {
-        if (!std::getline(fin, line)) {
-            throw std::runtime_error("Unexpected end of file.");
-        }
-
+    int rows = 0;
+    while ( std::getline(fin, line) ) {
         fields.clear();
+
         if ( parse_csv_line(line, fields) != 1 + mnist_input_size ) {
             throw std::runtime_error("Failed to read pixel values");
         }
 
-        memset(y + mnist_label_size * i, 0, mnist_label_size * sizeof(float));
-        y[mnist_label_size * i + fields[0]] = 1.0f;
+        memset(mnist.labels + mnist_label_size * rows, 0, mnist_label_size * sizeof(float));
+        mnist.labels[mnist_label_size * rows + fields[0]] = 1.0f;
 
-        float* x_row = x + i * mnist_input_size;
+        float* x_row = mnist.input + rows * mnist_input_size;
         for (int j = 0; j < mnist_input_size; ++j) {
             x_row[j] = ((float) fields[1+j]) / 255.0f;
         }
+        rows++;
     }
+    fin.close();
+    return mnist.size == rows;
 }
