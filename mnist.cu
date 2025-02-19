@@ -110,7 +110,7 @@ void print_matrix(int width, int height, float* matrix, std::string title, bool 
         std::cout<<title<<std::endl;
         for(int i = 0; i < height; i++) {
             for(int j = 0; j < width; j++) {
-                std::cout <<std::fixed << std::setprecision(4) << matrix[i*width+j] << ", ";
+                std::cout <<std::fixed << std::setprecision(3) << matrix[i*width+j] << ", ";
                 if (std::isnan(matrix[i*width+j]) ) {
                     std::cerr << "NaN value at " << i << ", " << j << std::endl;
                 }
@@ -398,8 +398,6 @@ void train(const float *mnist_train_x, const float *mnist_train_y) {
     cudaMalloc(&d_l1, size1*batch_size*sizeof(float));
     init_linear(w1, b1, size1, input_size, threadsPerBlock);
 
-    print_matrix(size1, input_size, w1, "W1", true);
-
     float *w2, *b2, *d_l2;
     cudaMalloc(&w2, size2 * size1 * sizeof(float));
     cudaMalloc(&b2, size2 * sizeof(float));
@@ -467,18 +465,18 @@ void train(const float *mnist_train_x, const float *mnist_train_y) {
             cudaMemcpy(&h_loss, loss, batch_size * sizeof(float), cudaMemcpyDeviceToHost);
             cudaMemcpy(&h_out, a3, size3 * batch_size * sizeof(float), cudaMemcpyDeviceToHost);
 
-            print_matrix(size1, batch_size, x1, "x1", true);
+            // print_matrix(size1, batch_size, x1, "x1", true);
             // print_matrix(size1, batch_size, a1, "a1", true);
             // print_matrix(size2, batch_size, x2, "x2", true);
             // print_matrix(size2, batch_size, a2, "a2", true);
             // print_matrix(size3, batch_size, x3, "x3", true);
             // print_matrix(size3, batch_size, a3, "a3", true);
             // print_matrix(size3, batch_size, h_out, "Output");
-            print_matrix(batch_size, 1, h_loss, "Loss");
+            // print_matrix(batch_size, 1, h_loss, "Loss");
 
             for (int i = 0; i < batch_size; i++) {
                 int offset = batch * batch_size * label_size + i * label_size;
-                int predicted_class = argmax(h_out, label_size);
+                int predicted_class = argmax(&h_out[i * label_size], label_size);
                 int true_class = argmax(&mnist_train_y[offset], label_size);
                 // std::cout << "Sample " << i << ": Predicted = " << predicted_class << ", True = " << true_class << std::endl;
             
@@ -500,15 +498,8 @@ void train(const float *mnist_train_x, const float *mnist_train_y) {
             linear_backward<<<dimGrid, dimBlock>>>(batch_size, size2, size1, w2, b2, d_l2, d_l1);
             relu_backward<<<dimGrid, dimBlock>>>(size1, batch_size, a1, d_l1, d_l1);
 
-            // HERE
-            // print_matrix(size3, batch_size, d_l3, "d_l3", true);
-            // print_matrix(size3, size2, w3, "W3 (before)", true);
-
             std::tie(dimGrid, dimBlock) = get_grid2d(size3, size2, threadsPerBlock);
             linear_update<<<dimGrid, dimBlock>>>(size3, size2, batch_size, lr, w3, b3, a2, d_l3);
-
-            // print_matrix(size3, size2, w3, "W3 (after)", true);
-            // THERE
 
             std::tie(dimGrid, dimBlock) = get_grid2d(size2, size1, threadsPerBlock);
             linear_update<<<dimGrid, dimBlock>>>(size2, size1, batch_size, lr, w2, b2, a1, d_l2);
@@ -521,8 +512,8 @@ void train(const float *mnist_train_x, const float *mnist_train_y) {
         auto stop_time = std::chrono::high_resolution_clock::now();
         float epoch_time = std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(stop_time - start_time).count();
         std::cout << "Epoch " << epoch << ": " 
-            << " took "<< epoch_time << "ms, "
-            << correct << " / " << total 
+            << " took "<< epoch_time << "ms,"
+            << " accuracy: " << (float) correct / total 
             << ", loss: " << cum_loss << std::endl;
     }
 }
