@@ -25,17 +25,17 @@ inline void gpu_assert(cudaError_t code, const char *file, int line, bool abort=
    }
 }
 
-inline std::pair<dim3,dim3> get_grid2d(int width, int height, int block_size) {
+inline std::pair<dim3,dim3> get_grid2d(int width, int height, int threadsPerBlock) {
     return std::pair(
-        dim3(ceil(width / (float) block_size), ceil(height / (float) block_size), 1),
-        dim3(block_size, block_size, 1)
+        dim3((width + threadsPerBlock - 1) / threadsPerBlock, (height + threadsPerBlock - 1) / threadsPerBlock),
+        dim3(threadsPerBlock, threadsPerBlock)
     );
 }
 
-inline std::pair<dim3, dim3> get_grid1d(int height, int block_size) {
+inline std::pair<dim3, dim3> get_grid1d(int height, int threadsPerBlock) {
     return std::pair(
-        dim3(ceil(height / (float) block_size), 1, 1),
-        dim3(block_size, 1, 1)
+        dim3((height + threadsPerBlock - 1) / threadsPerBlock),
+        dim3(threadsPerBlock)
     );
 }
 
@@ -106,17 +106,17 @@ void print_matrix(int width, int height, float* matrix, std::string title, bool 
         cudaMemcpy(h_matrix, matrix, width * height * sizeof(float), cudaMemcpyDeviceToHost);
         print_matrix(width, height, h_matrix, title);
         delete [] h_matrix;
-        return;
-    }
-    std::cout<<title<<std::endl;
-    for(int i = 0; i < height; i++) {
-        for(int j = 0; j < width; j++) {
-            std::cout <<std::fixed << std::setprecision(2) << matrix[i*width+j] << ", ";
-            if (std::isnan(matrix[i*width+j]) ) {
-                std::cerr << "NaN value at " << i << ", " << j << std::endl;
+    } else {
+        std::cout<<title<<std::endl;
+        for(int i = 0; i < height; i++) {
+            for(int j = 0; j < width; j++) {
+                std::cout <<std::fixed << std::setprecision(4) << matrix[i*width+j] << ", ";
+                if (std::isnan(matrix[i*width+j]) ) {
+                    std::cerr << "NaN value at " << i << ", " << j << std::endl;
+                }
             }
+            std::cout<<std::endl;
         }
-        std::cout<<std::endl;
     }
 }
 
@@ -178,7 +178,8 @@ __global__ void linear_backward(
     if (row < batch_size && col < dim_out) {
         float dl = 0.f;
         for (int i = 0; i < dim_in; i++) {
-            dl += weights[i * dim_out + col] * d_in[row * dim_in + i];
+            float w = weights[i * dim_out + col];
+            dl += w * d_in[row * dim_in + i];
         }
         d_out[row * dim_out + col] = dl;
     }
@@ -194,8 +195,9 @@ __global__ void linear_update(
     if (row < height && col < width) {
         float dw = 0.f, db = 0.f;
         for (int i = 0; i < batch_size; i++) {
+            float act = activations[i * height + row];
             float dl = d_l[i * width + col];
-            dw += activations[i * height + row] * dl;
+            dw += act * dl;
             db += dl;
         }
         weights[row * width + col] -= lr * dw / batch_size;
@@ -243,7 +245,8 @@ __global__ void relu_backward(
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     if (row < height && col < width) {
-        d_out[row * width + col] = a[row * width + col] > 0.f ? d_in[row * width + col] : 0.f;
+        float act = a[row * width + col];
+        d_out[row * width + col] = act > 0.f ? d_in[row * width + col] : 0.f;
     }
 }
 
@@ -371,12 +374,12 @@ void init_linear(float *w, float *b, int width, int height, int blockSize) {
     init_rand<<<dimGrid, dimBlock>>>(width, height, w);
 
     std::tie(dimGrid, dimBlock) = get_grid1d(height, blockSize);
-    init_rand<<<dimGrid, dimBlock>>>(height, 1, b);
+    init_rand<<<dimGrid, dimBlock>>>(1, height, b);
 }
 
 void train(const float *mnist_train_x, const float *mnist_train_y) {
     const int batch_size = 4;
-    const int blockSize = 16;
+    const int threadsPerBlock = 16;
     const float lr = 0.003f;
 
     int size1 = 300;
@@ -393,19 +396,21 @@ void train(const float *mnist_train_x, const float *mnist_train_y) {
     cudaMalloc(&w1, size1 * input_size * sizeof(float));
     cudaMalloc(&b1, size1 * sizeof(float));
     cudaMalloc(&d_l1, size1*batch_size*sizeof(float));
-    init_linear(w1, b1, size1, input_size, blockSize);
+    init_linear(w1, b1, size1, input_size, threadsPerBlock);
+
+    print_matrix(size1, input_size, w1, "W1", true);
 
     float *w2, *b2, *d_l2;
     cudaMalloc(&w2, size2 * size1 * sizeof(float));
     cudaMalloc(&b2, size2 * sizeof(float));
     cudaMalloc(&d_l2, size2*batch_size*sizeof(float));
-    init_linear(w2, b2, size2, size1, blockSize);
+    init_linear(w2, b2, size2, size1, threadsPerBlock);
 
     float *w3, *b3, *d_l3;
     cudaMalloc(&w3, size3 * size2 * sizeof(float));
     cudaMalloc(&b3, size3 * sizeof(float));
     cudaMalloc(&d_l3, size3*batch_size*sizeof(float));
-    init_linear(w3, b3, size3, size2, blockSize);
+    init_linear(w3, b3, size3, size2, threadsPerBlock);
 
     float *x1, *a1, *x2, *a2, *x3, *a3;
     cudaMalloc(&x1, batch_size * size1 * sizeof(float));
@@ -441,19 +446,19 @@ void train(const float *mnist_train_x, const float *mnist_train_y) {
                 cudaMemcpyHostToDevice);
             gpu_check();
 
-            auto [dimGrid, dimBlock] = get_grid2d(size1, batch_size, blockSize);
+            auto [dimGrid, dimBlock] = get_grid2d(size1, batch_size, threadsPerBlock);
             linear<<<dimGrid, dimBlock>>>(batch_size, input_size, size1, input, w1, b1, x1);
             relu<<<dimGrid, dimBlock>>>(size1, batch_size, x1, a1);
 
-            std::tie(dimGrid, dimBlock) = get_grid2d(size2, batch_size, blockSize);
-            linear<<<dim3(1, 1, 1), dimBlock>>>(batch_size, size1, size2, a1, w2, b2, x2);
+            std::tie(dimGrid, dimBlock) = get_grid2d(size2, batch_size, threadsPerBlock);
+            linear<<<dimGrid, dimBlock>>>(batch_size, size1, size2, a1, w2, b2, x2);
             relu<<<dimGrid, dimBlock>>>(size2, batch_size, x2, a2);
 
-            std::tie(dimGrid, dimBlock) = get_grid2d(size3, batch_size, blockSize);
+            std::tie(dimGrid, dimBlock) = get_grid2d(size3, batch_size, threadsPerBlock);
             linear<<<dimGrid, dimBlock>>>(batch_size, size2, size3, a2, w3, b3, x3);
             softmax<<<dimGrid, dimBlock>>>(size3, batch_size, x3, a3);
 
-            std::tie(dimGrid, dimBlock) = get_grid1d(size3, blockSize);
+            std::tie(dimGrid, dimBlock) = get_grid1d(size3, threadsPerBlock);
             cross_entropy<<<dimGrid, dimBlock>>>(size3, batch_size, a3, y, loss);
 
             gpu_check();
@@ -462,44 +467,61 @@ void train(const float *mnist_train_x, const float *mnist_train_y) {
             cudaMemcpy(&h_loss, loss, batch_size * sizeof(float), cudaMemcpyDeviceToHost);
             cudaMemcpy(&h_out, a3, size3 * batch_size * sizeof(float), cudaMemcpyDeviceToHost);
 
-            // print_matrix(size1, batch_size, x1, "x1", true);
+            print_matrix(size1, batch_size, x1, "x1", true);
+            // print_matrix(size1, batch_size, a1, "a1", true);
+            // print_matrix(size2, batch_size, x2, "x2", true);
+            // print_matrix(size2, batch_size, a2, "a2", true);
+            // print_matrix(size3, batch_size, x3, "x3", true);
             // print_matrix(size3, batch_size, a3, "a3", true);
             // print_matrix(size3, batch_size, h_out, "Output");
-            // print_matrix(1, batch_size, h_loss, "Loss");
+            print_matrix(batch_size, 1, h_loss, "Loss");
 
             for (int i = 0; i < batch_size; i++) {
                 int offset = batch * batch_size * label_size + i * label_size;
-                if (argmax(h_out, label_size) == argmax(&mnist_train_y[offset], label_size)) {
+                int predicted_class = argmax(h_out, label_size);
+                int true_class = argmax(&mnist_train_y[offset], label_size);
+                // std::cout << "Sample " << i << ": Predicted = " << predicted_class << ", True = " << true_class << std::endl;
+            
+                if (predicted_class == true_class) {
                     correct++;
                 }
                 cum_loss += h_loss[i];
             }
 
             // Backward pass.
-            std::tie(dimGrid, dimBlock) = get_grid2d(size3, batch_size, blockSize);
+            std::tie(dimGrid, dimBlock) = get_grid2d(size3, batch_size, threadsPerBlock);
             cross_entropy_backward<<<dimGrid, dimBlock>>>(size3, batch_size, a3, y, d_l3);
 
-            std::tie(dimGrid, dimBlock) = get_grid2d(size2, batch_size, blockSize);
+            std::tie(dimGrid, dimBlock) = get_grid2d(size2, batch_size, threadsPerBlock);
             linear_backward<<<dimGrid, dimBlock>>>(batch_size, size3, size2, w3, b3, d_l3, d_l2);
             relu_backward<<<dimGrid, dimBlock>>>(size2, batch_size, a2, d_l2, d_l2);
 
-            std::tie(dimGrid, dimBlock) = get_grid2d(size1, batch_size, blockSize);
+            std::tie(dimGrid, dimBlock) = get_grid2d(size1, batch_size, threadsPerBlock);
             linear_backward<<<dimGrid, dimBlock>>>(batch_size, size2, size1, w2, b2, d_l2, d_l1);
             relu_backward<<<dimGrid, dimBlock>>>(size1, batch_size, a1, d_l1, d_l1);
 
-            std::tie(dimGrid, dimBlock) = get_grid2d(size3, size2, blockSize);
+            // HERE
+            // print_matrix(size3, batch_size, d_l3, "d_l3", true);
+            // print_matrix(size3, size2, w3, "W3 (before)", true);
+
+            std::tie(dimGrid, dimBlock) = get_grid2d(size3, size2, threadsPerBlock);
             linear_update<<<dimGrid, dimBlock>>>(size3, size2, batch_size, lr, w3, b3, a2, d_l3);
 
-            std::tie(dimGrid, dimBlock) = get_grid2d(size2, size1, blockSize);
+            // print_matrix(size3, size2, w3, "W3 (after)", true);
+            // THERE
+
+            std::tie(dimGrid, dimBlock) = get_grid2d(size2, size1, threadsPerBlock);
             linear_update<<<dimGrid, dimBlock>>>(size2, size1, batch_size, lr, w2, b2, a1, d_l2);
 
-            std::tie(dimGrid, dimBlock) = get_grid2d(size1, input_size, blockSize);
+            std::tie(dimGrid, dimBlock) = get_grid2d(size1, input_size, threadsPerBlock);
             linear_update<<<dimGrid, dimBlock>>>(size1, input_size, batch_size, lr, w1, b1, input, d_l1);            
             gpu_check();
         }
 
-        auto end_time = std::chrono::high_resolution_clock::now();
+        auto stop_time = std::chrono::high_resolution_clock::now();
+        float epoch_time = std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(stop_time - start_time).count();
         std::cout << "Epoch " << epoch << ": " 
+            << " took "<< epoch_time << "ms, "
             << correct << " / " << total 
             << ", loss: " << cum_loss << std::endl;
     }
