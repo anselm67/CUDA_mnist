@@ -4,9 +4,7 @@ project(GPU_Primer VERSION 0.1.0 LANGUAGES C CXX CUDA)
 cmake_policy(SET CMP0146 NEW)
 find_package(CUDAToolkit REQUIRED)
 
-add_executable(primer primer.cu)
-add_executable(mult mult.cu)
-add_executable(mnist mnist.cu)
+add_executable(mnist mnist.cu kernels.cu utils.cu dataset.cpp)
 
 # Common compile flags
 set(CUDA_COMMON_FLAGS
@@ -22,20 +20,18 @@ function(setup_target target)
     if(CMAKE_BUILD_TYPE MATCHES "Debug")
         message(STATUS "Building ${target} in Debug mode")
         target_compile_options(${target} PRIVATE
-            ${CUDA_COMMON_FLAGS}
-            -g # Enable debug information
+            $<$<COMPILE_LANGUAGE:CUDA>:${CUDA_COMMON_FLAGS} -g> # CUDA-specific flags
+            $<$<COMPILE_LANGUAGE:CXX>:-g> # C++-specific flags
         )
     elseif(CMAKE_BUILD_TYPE MATCHES "Release")
         message(STATUS "Building ${target} in Release mode")
         target_compile_options(${target} PRIVATE
-            ${CUDA_COMMON_FLAGS}
-            -O3 # Enable optimization
+            $<$<COMPILE_LANGUAGE:CUDA>:${CUDA_COMMON_FLAGS} -O3> # CUDA-specific flags
+            $<$<COMPILE_LANGUAGE:CXX>:-O3> # C++-specific flags
         )
     endif()
 endfunction()
 
 # Apply the function to each target
-setup_target(primer)
-setup_target(mult)
 setup_target(mnist)
 
